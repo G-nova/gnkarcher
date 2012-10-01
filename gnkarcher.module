@@ -1,0 +1,149 @@
+<?php
+
+
+/* *********************************************************************
+ * MENU ROUTER & PERMISSIONS
+ * ****************************************************************** */
+
+
+/**
+ * Implements hook_menu().
+ */
+function gnkarcher_menu() {
+  return array(
+    'admin/config/system/gnkarcher' => array(
+      'title' => "GNKarcher",
+      'page callback' => 'gnkarcher_dashboard',
+      'access arguments' => array('use gnkarcher'),
+      'weight' => 100
+    ),
+    'admin/config/system/gnkarcher/dashboard' => array(
+      'title' => "Dashboard",
+      'access arguments' => array('use gnkarcher'),
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'weight' => 0
+    ),
+    'admin/config/system/gnkarcher/field-table' => array(
+      'title' => "Field table",
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('gnkarcher_fieldtable_form'),
+      'access arguments' => array('use gnkarcher'),
+      'type' => MENU_LOCAL_TASK,
+      'weight' => 10
+    ),
+  );
+}
+
+
+/**
+ * Implements hook_permission().
+ */
+function gnkarcher_permission() {
+  return array(
+    'use gnkarcher' => array(
+      'title' => t("Use gnkarcher")
+    ),
+  );
+}
+
+
+/* *********************************************************************
+ * DASHBOARD
+ * ****************************************************************** */
+
+
+/**
+ * Dashboard callback
+ */
+function gnkarcher_dashboard() {
+  $tasks = menu_local_tasks();
+  return $tasks['tabs']['output'];
+}
+
+
+
+/* *********************************************************************
+ * FIELD TABLE
+ * ****************************************************************** */
+
+
+/**
+ * Field table callback
+ */
+function gnkarcher_fieldtable_form($form, &$form_state) {
+  $form = array();
+
+  // Get prefix
+  global $databases;
+  $prefix = $databases['default']['default']['prefix'];
+
+  // Get fields
+  $fields = field_info_fields();
+
+  // Get fields tables & revisions
+  $tables = db_find_tables($prefix.'field_data_%');
+  $revisions = db_find_tables($prefix.'field_revision_%');
+
+  $unused_tables = array();
+  foreach($tables as $table) {
+    $field_name = str_replace($prefix.'field_data_', '', $table);
+    if (!isset($fields[$field_name])) {
+      $unused_tables[$table] = $table;
+    }
+  }
+
+  $unused_revisions = array();
+  foreach($revisions as $revision) {
+    $field_name = str_replace($prefix.'field_revision_', '', $revision);
+    if (!isset($fields[$field_name])) {
+      $unused_revisions[$revision] = $revision;
+    }
+  }
+
+  // Build form
+  if (count($unused_tables) || count($unused_revisions)) {
+    $form['unused_tables'] = array(
+      '#title' => t("Unused tables"),
+      '#type' => 'checkboxes',
+      '#options' => $unused_tables,
+      '#default_value' => $unused_tables,
+      '#prefix' => '<div style="width:49%;display:inline-block">', '#suffix' => '</div>'
+    );
+    $form['unused_revisions'] = array(
+      '#title' => t("Unused revisions"),
+      '#type' => 'checkboxes',
+      '#options' => $unused_revisions,
+      '#default_value' => $unused_revisions,
+      '#prefix' => '<div style="width:49%;display:inline-block">', '#suffix' => '</div>'
+    );
+
+    $form['warning'] = array(
+      '#markup' => '<p><strong>'.t("This action could not be undone. Don't forget to backup your database.").'</strong></p>'
+    );
+    $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t("Delete"),
+    );
+  }
+  else {
+    $form['empty'] = array(
+      '#markup' => '<p><em>'.t("No tables to remove.").'</em></p>'
+    );
+  }
+
+  return $form;
+} // gnkarcher_fieldtable_form
+
+function gnkarcher_fieldtable_form_submit($form, &$form_state) {
+
+  // Get tables to remove
+  $tables_to_remove = array_merge(array_filter($form_state['values']['unused_tables']), array_filter($form_state['values']['unused_revisions']));
+
+  // Remove table
+  foreach ($tables_to_remove as $table_name) {
+    db_drop_table($table_name);
+  }
+
+  drupal_set_message(t("@count tables removed", array('@count'=>count($tables_to_remove))));
+} // gnkarcher_fieldtable_form_submit
+

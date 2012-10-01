@@ -1,0 +1,6 @@
+name = GN Karkcher
+description = Perform cleanup tasks on your drupal.
+core = 7.x
+php = 5
+
+package = GNova
